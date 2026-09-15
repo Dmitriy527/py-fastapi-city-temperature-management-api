@@ -1,8 +1,7 @@
 from sqlalchemy import String
-from sqlalchemy.orm import Mapped
-from sqlalchemy.testing.schema import mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
-from engine import Base
+from db.engine import Base
 
 
 class DBCity(Base):
