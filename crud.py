@@ -18,3 +18,9 @@ def create_city(db: Session, city: schemas.CityCreate) -> models.DBCity:
     db.commit()
     db.refresh(db_city)
     return db_city
+
+def delete_city(db: Session, city_id: int) -> None:
+    db_city = db.query(models.DBCity).filter(models.DBCity.id == city_id).first()
+    db.delete(db_city)
+    db.commit()
+    return db_city
