@@ -1,8 +1,13 @@
-from fastapi import FastAPI, Depends, HTTPException
+import asyncio
+from datetime import datetime, timezone
+
+import httpx
+from fastapi import FastAPI, Depends, HTTPException, APIRouter
 from sqlalchemy.orm import Session
 
 import crud
 import schemas
+from db import models
 from db.engine import SessionLocal
 from db.models import DBCity
 from db.engine import Base, engine
@@ -42,3 +47,30 @@ def delete_city(city_id: int, db: Session = Depends(get_db)):
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+
+@app.post("/temperatures/update/")
+async def update_temps(db: Session = Depends(get_db)):
+    cities = db.query(models.DBCity).all()
+    now = datetime.now(timezone.utc)
+
+    async with httpx.AsyncClient() as client:
+        tasks = [crud.fetch_city_temp(client, city.name) for city in cities]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    updated = 0
+    for city, temp in zip(cities, results):
+        if temp is None or isinstance(temp, Exception):
+            print(f"skip {city.name}: {temp!r}")
+            continue
+
+        temp_rec = models.DBTemperature(
+            city_id=city.id,
+            date_time=now,
+            temperature=temp,
+        )
+        db.add(temp_rec)
+        updated += 1
+
+    db.commit()
+    return {"updated": updated, "total": len(cities)}

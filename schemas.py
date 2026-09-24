@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -10,6 +12,21 @@ class CityCreate(CityBase):
     pass
 
 class City(CityBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class TemperatureBase(BaseModel):
+    city_id: int
+    dete_time: datetime
+    temperature: float
+
+class TemperatureCreate(TemperatureBase):
+    pass
+
+class Temperature(CityBase):
     id: int
 
     class Config:
