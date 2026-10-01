@@ -69,8 +69,8 @@ curl http://127.0.0.1:8000/cities/
 | POST | `/cities/` | Create a city (`name`, `additional_info`) |
 | DELETE | `/cities/{city_id}` | Delete a city together with all its temperature records |
 | POST | `/temperatures/update/` | Fetch the current temperature for all cities from Open-Meteo and save it to the DB |
-| GET | `/temperatures` | Record (maximum) temperature for each city |
-| GET | `/temperatures/?city_id=1` | Record temperature for a specific city (without `city_id` — across all records) |
+| GET | `/temperatures` | All temperature records for all cities |
+| GET | `/temperatures/?city_id=1` | All temperature records for a specific city |
  
 ### Design choices
  
@@ -91,7 +91,5 @@ curl http://127.0.0.1:8000/cities/
 - Temperature is in °C (the Open-Meteo default); only the current value at the time of the update is stored.
 - Temperature updates are triggered manually via `POST /temperatures/update/`. There is no automatic scheduler (cron, background tasks).
 - The DB schema is managed by Alembic: every model change is recorded as a new migration. Batch mode (`render_as_batch`) is used for SQLite because it has limited `ALTER TABLE` support.
-- No authentication, pagination, or caching.
-- The record temperature is found by iterating over all records in Python (rather than with an SQL `MAX` query), which is acceptable for a small data volume.
-- The initial record value is `-273.0` (roughly absolute zero, below which temperatures on Earth cannot go), so any real temperature, including negative ones, can become a record.
+- No authentication, pagination, or caching, so the `/temperatures` endpoints return all records at once; with a large amount of data, pagination should be added.
 - There are no tests; verification is done manually via Swagger UI.
