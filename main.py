@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 import crud
 import schemas
 from crud import get_all_citys, get_all_temperatures_by_city
-from db import models
 from db.engine import SessionLocal
 from db.models import DBCity
 from db.engine import Base, engine
+from db import models
 
 Base.metadata.create_all(bind=engine)
 
@@ -31,7 +31,7 @@ def read_all_cities(db: Session = Depends(get_db)):
     return crud.get_all_citys(db)
 
 
-@app.get("/temperatures/", response_model=list[schemas.Temperature])
+@app.get("/temperatures", response_model=list[schemas.Temperature])
 def read_all_temperatures(db: Session = Depends(get_db)):
     cities = get_all_citys(db)
     record_temperetarutre_by_city = []
@@ -46,10 +46,10 @@ def read_all_temperatures(db: Session = Depends(get_db)):
 
 
 
-@app.get("/temperatures/{city_id}", response_model=schemas.Temperature)
-def read_temperature_by_city(city_id: int, db: Session = Depends(get_db)):
+@app.get("/temperatures/", response_model=schemas.Temperature)
+def read_temperature_by_city(city_id: int | None = None, db: Session = Depends(get_db)):
     all_temperatures_by_city = crud.get_all_temperatures_by_id_city(db=db, city_id=city_id)
-    city_record = 0.0
+    city_record = -273.0
     need_temperature = None
     for temperature in all_temperatures_by_city:
         if temperature.temperature > city_record:
@@ -64,10 +64,9 @@ def create_city(
 ) -> DBCity:
     return crud.create_city(db=db, city=city)
 
-@app.delete("/cities/{city_id}", response_model=str)
+@app.delete("/cities/{city_id}", status_code=204)
 def delete_city(city_id: int, db: Session = Depends(get_db)):
     crud.delete_city(db=db, city_id=city_id)
-    return f"deleted city {city_id}"
 
 @app.get("/")
 async def root():

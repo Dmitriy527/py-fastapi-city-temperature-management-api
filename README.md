@@ -1,116 +1,97 @@
 # Temperature Catalog API
 
-A small FastAPI application that stores a list of cities and keeps a history of their
-current temperatures. Temperatures are fetched from the free
-[Open-Meteo](https://open-meteo.com/) APIs (no API key required) and saved to a local
-SQLite database.
-
-## How to run
-
-### 1. Prerequisites
-
-- Python 3.10+ (the code uses the `int | None` type syntax)
-- Internet access (needed only for the temperature update endpoint)
-
-### 2. Create a virtual environment and install dependencies
-
+A FastAPI REST API for storing a list of cities and their temperature history. The current temperature is fetched from the free [Open-Meteo](https://open-meteo.com/) API (no API key required).
+ 
+### How to run
+ 
+1. Create and activate a virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
-
-pip install fastapi "uvicorn[standard]" sqlalchemy alembic httpx pydantic
+   python -m venv venv
+   # Linux / macOS
+   source venv/bin/activate
+   # Windows
+   venv\Scripts\activate
 ```
-
-### 3. Apply migrations and start the server
-
-From the project root (the folder containing `main.py`):
-
+ 
+2. Install dependencies:
 ```bash
+   pip install -r requirements.txt
+```
+ 
+3. Apply database migrations (from the project root, where `alembic.ini` is located):
+```bash
+   alembic upgrade head
+```
+ 
+   This command creates the `temperature_catalog.db` file (SQLite) in the project root along with all tables (`city`, `temperature`).
+ 
+4. Start the application (from the project root, where `main.py` is located):
+```bash
+   uvicorn main:app --reload
+```
+ 
+5. Open in your browser:
+   - API: http://127.0.0.1:8000
+   - Swagger UI (interactive documentation): http://127.0.0.1:8000/docs
+An internet connection is required to update temperatures.
+ 
+### Migrations (Alembic)
+ 
+If you change `db/models.py`, generate a new migration and apply it:
+ 
+```bash
+alembic revision --autogenerate -m "describe your changes"
 alembic upgrade head
-uvicorn main:app --reload
 ```
-
-The SQLite file `temperature_catalog.db` is created automatically. The database schema is
-managed with Alembic; `Base.metadata.create_all` in `main.py` only creates missing tables
-on startup.
-
-### 4. Example usage
-
+ 
+Review the generated file in `alembic/versions/` before applying it — autogenerate does not always detect every change correctly (for example, column renames in SQLite).
+ 
+### Usage example
+ 
 ```bash
-# Add a city
+# add a city
 curl -X POST http://127.0.0.1:8000/cities/ \
   -H "Content-Type: application/json" \
   -d '{"name": "Kyiv", "additional_info": "Capital of Ukraine"}'
-
-# List cities
-curl http://127.0.0.1:8000/cities/
-
-# Fetch the current temperature for all cities and store it
+ 
+# fetch the current temperature for all cities and save it to the DB
 curl -X POST http://127.0.0.1:8000/temperatures/update/
-
-# Highest recorded temperature for every city
-curl http://127.0.0.1:8000/temperatures/
-
-# Highest recorded temperature for one city
-curl http://127.0.0.1:8000/temperatures/1
-
-# Delete a city (and its temperature history)
-curl -X DELETE http://127.0.0.1:8000/cities/1
+ 
+# list cities
+curl http://127.0.0.1:8000/cities/
 ```
-
-## API overview
-
-| Method | Path                     | Description                                                      |
-|--------|--------------------------|------------------------------------------------------------------|
-| GET    | `/`                      | Health-check / hello message                                     |
-| GET    | `/cities/`               | List all cities                                                  |
-| POST   | `/cities/`               | Create a city (`name`, `additional_info`)                        |
-| DELETE | `/cities/{city_id}`      | Delete a city and all of its temperature records                 |
-| POST   | `/temperatures/update/`  | Fetch current temperatures for all cities and save them          |
-| GET    | `/temperatures/`         | Record (highest) temperature for each city                       |
-| GET    | `/temperatures/{city_id}`| Record (highest) temperature for a single city                   |
-
-## Design choices
-
-- **FastAPI + SQLAlchemy + SQLite.** FastAPI gives automatic data validation;
-  SQLite keeps the project zero-setup (a single file, no database server).
-- **Layered structure.** Endpoints live in `main.py`, database and external-API logic in
-  `crud.py`, ORM models in `db/models.py`, and request/response validation in
-  `schemas.py`. This keeps routes thin and makes each part easy to test or replace.
-- **Alembic for migrations.** Database schema changes are versioned and applied with Alembic.
-- **Separate Pydantic schemas** (`Base` / `Create` / read model) so that clients never
-  send an `id`, while responses always include it. `from_attributes = True` lets
-  responses be built directly from ORM objects.
-- **Two tables with a foreign key.** `city` (unique name, optional extra info) and
-  `temperature` (city_id, timestamp, value). Each update adds a new row, so the
-  temperature history is preserved instead of overwritten.
-- **Concurrent external calls.** `POST /temperatures/update/` uses `httpx.AsyncClient`
-  with `asyncio.gather`, so all cities are fetched in parallel rather than one by one.
-  `return_exceptions=True` ensures that one failing city does not break the whole update.
-- **Two-step Open-Meteo lookup.** The city name is first converted to coordinates with
-  the Open-Meteo Geocoding API, then the current weather is requested for those
-  coordinates.
-- **One DB session per request** via the `get_db` dependency, which always closes the
-  session in a `finally` block.
-- **Cascading delete done manually.** Deleting a city first removes its temperature
-  rows, then the city itself, so no orphaned records remain.
-- **Timestamps in UTC.** `datetime.now(timezone.utc)` is used when saving a measurement.
-
-## Assumptions and simplifications
-
-- **City names are resolved by Open-Meteo's geocoder, taking the first match.**
-  Ambiguous names (e.g. "Springfield") may resolve to an unexpected location.
-  City names must also be unique in the database.
-- **Temperatures are in °C**, as returned by Open-Meteo by default.
-- **Temperatures are only collected when `POST /temperatures/update/` is called.** There
-  is no background scheduler; call the endpoint manually or from cron to build up history.
-- **Failures are skipped silently.** If a city cannot be geocoded or the API request
-  fails, that city is skipped (logged with `print`) and the rest are still saved. The
-  response reports how many were updated (`updated` / `total`).
-- **"Record temperature" means the highest recorded value** for a city across all stored
-  measurements.
-- **No authentication, pagination, or rate limiting.** All endpoints are public and
-  return full lists.
-- **No automated tests** are included.
-- **SQLite with `check_same_thread=False`** is used for simplicity; for production use
-  a server database such as PostgreSQL.
+ 
+### Endpoints
+ 
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/cities/` | List all cities |
+| POST | `/cities/` | Create a city (`name`, `additional_info`) |
+| DELETE | `/cities/{city_id}` | Delete a city together with all its temperature records |
+| POST | `/temperatures/update/` | Fetch the current temperature for all cities from Open-Meteo and save it to the DB |
+| GET | `/temperatures` | Record (maximum) temperature for each city |
+| GET | `/temperatures/?city_id=1` | Record temperature for a specific city (without `city_id` — across all records) |
+ 
+### Design choices
+ 
+- **FastAPI + Pydantic** — automatic data validation and ready-made Swagger documentation.
+- **SQLAlchemy 2.0 + SQLite** — an ORM with minimal boilerplate, and SQLite needs no separate server. The DB path is built with `pathlib`, so the project behaves the same on any OS. The `check_same_thread=False` option is needed because FastAPI may handle a request in a different thread.
+- **Alembic for migrations** — versioning of the DB schema: table structure can be changed without losing data, and changes can be rolled back.
+- **Layered structure**: `db/` (connection and models), `schemas.py` (Pydantic schemas for the API), `crud.py` (database and external API access), `main.py` (routes). This keeps business logic separate from HTTP handlers.
+- **Separate models and schemas**: SQLAlchemy models (`DBCity`, `DBTemperature`) are separate from Pydantic schemas (`City`, `Temperature`), and `from_attributes = True` converts one into the other automatically.
+- **The `get_db` dependency** opens a session per request and guarantees it is closed after the response.
+- **Asynchronous temperature updates**: the `/temperatures/update/` endpoint uses `httpx.AsyncClient` and `asyncio.gather`, so requests for all cities run in parallel rather than one by one.
+- **Two-step Open-Meteo lookup**: first geocoding (city name → coordinates), then a current-weather request by coordinates.
+- **Error tolerance**: if the external API fails or a city is not found, that city is skipped while the rest are updated normally. The response contains the number of updated cities and the total count.
+- **Cascade deletion**: when a city is deleted, its temperature records are removed first so the foreign key is not violated.
+- **A single timestamp** (`datetime.now(timezone.utc)`) for all records created in one update.
+### Assumptions and simplifications
+ 
+- A city name is unique and is used as the geocoding search query. The first Open-Meteo result is used, so for ambiguous names (e.g. cities with the same name in different countries) the wrong city may be selected.
+- Temperature is in °C (the Open-Meteo default); only the current value at the time of the update is stored.
+- Temperature updates are triggered manually via `POST /temperatures/update/`. There is no automatic scheduler (cron, background tasks).
+- The DB schema is managed by Alembic: every model change is recorded as a new migration. Batch mode (`render_as_batch`) is used for SQLite because it has limited `ALTER TABLE` support.
+- No authentication, pagination, or caching.
+- The record temperature is found by iterating over all records in Python (rather than with an SQL `MAX` query), which is acceptable for a small data volume.
+- The initial record value is `-273.0` (roughly absolute zero, below which temperatures on Earth cannot go), so any real temperature, including negative ones, can become a record.
+- There are no tests; verification is done manually via Swagger UI.
