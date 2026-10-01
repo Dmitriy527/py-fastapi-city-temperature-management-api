@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 import httpx
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 import schemas
@@ -22,6 +23,11 @@ def create_city(db: Session, city: schemas.CityCreate) -> models.DBCity:
 
 def delete_city(db: Session, city_id: int) -> None:
     db_city = db.query(models.DBCity).filter(models.DBCity.id == city_id).first()
+    if db_city is None:
+        raise HTTPException(status_code=404, detail="City not found")
+    db.query(models.DBTemperature).filter(
+        models.DBTemperature.city_id == city_id
+    ).delete(synchronize_session=False)
     db.delete(db_city)
     db.commit()
     return
