@@ -27,8 +27,16 @@ def delete_city(db: Session, city_id: int) -> None:
     return
 
 
-def get_all_temperatures(db: Session) -> Sequence[models.DBTemperature]:
-    return db.query(models.DBTemperature).all()
+def get_all_temperatures_by_city(db: Session, city: models.DBCity) -> Sequence[schemas.Temperature]:
+    query = db.query(models.DBTemperature).filter(models.DBTemperature.city == city)
+    return query.all()
+
+
+def get_all_temperatures_by_id_city(db: Session, city_id: int | None = None) -> Sequence[models.DBTemperature]:
+    query = db.query(models.DBTemperature)
+    if city_id is not None:
+        query = query.filter(models.DBTemperature.city_id == city_id)
+    return query.all()
 
 
 async def fetch_city_temp(client, city):
